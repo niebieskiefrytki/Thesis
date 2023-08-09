@@ -1,0 +1,281 @@
+import numpy as np
+import pandas as pd
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+kps = [2]
+
+for Kp in kps:
+    
+    now = datetime.now()
+    print(now.strftime("%y%m%d_%H%M%S"))
+    
+    name = 'Kp-'+str(Kp)
+    
+    m = 3000
+    
+    kn = 0.00001
+    k2 = 0.0001
+    kplus = 1
+    #kin = np.sqrt(Kp*0.1)
+    kin = 0
+    kout = kin/Kp
+    #kout = 0
+    R = 100
+    c_tot = 40
+    x = c_tot/m
+    #x=1
+    slow = 1
+    
+    sims = 100
+    
+    tmax=20
+    
+    stateout = [m]
+    statein  = [0]
+    
+    params = {'kn':[kn], 'k2':[k2], 'kplus':[kplus], 'kin':[kin], 'kout':[kout], 'R':[R], 'm':[m], 'c_tot':[c_tot], 'sims':[sims], 'slow':[slow]}
+    
+    def Nucl(S, kn):
+        return kn*S*(S-1)
+    def Nucl2(S, M, k2):
+        return k2*M*S*(S-1)
+    def Elon(S, P, kplus):
+        return kplus*S*2*P
+    def TransS(S, kin):
+        return kin*S
+    def TransF(P, kin, n):
+        #return kin*P*1/n
+        return 0
+        
+    '''
+    ORDER OF REACTIONS IN PROPENSITIES LIST:
+    index. reaction
+        0. primary nucleation out
+        1. secondary nucleation out
+        2. transport of monomers out->in
+        3. primary nucleation in
+        4. secondary nucleation in
+        5. transport of monomers in->out
+        6. elongation of fibre [n=2] out
+        7. transport of fibre [n=2] out->in
+        8. elongation of fibre [n=2] in
+        9. transport of fibre [n=2] out->in
+        ...
+     4n-2. elongation of fibre [n=n] out
+     4n-1. transport of fibre [n=n] out->in
+       4n. elongation of fibre [n=n] in
+     4n+1. transport of fibre [n=n] in->out
+        ...
+    '''
+    #function fibres calculates m, P and M parameters for the given fibre population (one list)
+    def fibres(stateout):
+        m = stateout[0]
+        P = 0
+        M = 0
+        for n, x in enumerate(stateout):
+            if n==0:
+                continue
+            P += x
+            M += (n+1)*x
+        return m, P, M
+    
+    #function props() creates list of propensities for the given state
+    def props(stateout: list, statein: list, kn, k2, kplus, kin, kout, x, R):
+        props = []
+        Mout = fibres(stateout)[2]
+        Min = fibres(statein)[2]
+        kn *= x
+        kn_in = kn*R*slow
+        kplus *= x
+        kplus_in = kplus*R*slow
+        k2 *= x**2
+        k2_in = k2*R**2*slow
+        kout *= R
+        props.append(Nucl(stateout[0], kn))                        #[0]
+        props.append(Nucl2(stateout[0], Mout, k2))                 #[1]
+        props.append(TransS(stateout[0], kin))                     #[2]
+        props.append(Nucl(statein[0], kn_in))                      #[3]
+        props.append(Nucl2(statein[0], Min, k2_in))                #[4]
+        props.append(TransS(statein[0], kout))                     #[5]
+        for n, x in enumerate(stateout):
+            if n<1:
+                continue
+            props.append(Elon(stateout[0], stateout[n], kplus))    #[4n-2]
+            props.append(TransF(stateout[n], kin, n+1))            #[4n-1]
+            props.append(Elon(statein[0], statein[n], kplus_in))   #[4n]
+            props.append(TransF(statein[n], kout, n+1))            #[4n+1]
+        return props
+    
+    #function reaction() creates updated state lists
+    def reaction(stateout: list, statein: list, n: int):
+        if n==0:
+            stateout[0] -= 2
+            if len(stateout)>1:
+                stateout[1] += 1
+            else:
+                stateout.append(1)
+                statein.append(0)
+        elif n==1:
+            stateout[0] -= 2
+            if len(stateout)>1:
+                stateout[1] += 1
+            else:
+                stateout.append(1)
+                statein.append(0)
+        elif n==2:
+            stateout[0] -= 1
+            statein[0]  += 1
+        elif n==3:
+            statein[0] -= 2
+            if len(statein)>1:
+                statein[1] += 1
+            else:
+                statein.append(1)
+                stateout.append(0)
+        elif n==4:
+            statein[0] -= 2
+            if len(statein)>1:
+                statein[1] += 1
+            else:
+                statein.append(1)
+                stateout.append(0)
+        elif n==5:
+            statein[0]  -= 1
+            stateout[0] += 1
+        elif (n-6)%4==0:
+            k = (n+2)/4-1
+            k = int(k)
+            stateout[0] -= 1
+            stateout[k] -= 1
+            if len(stateout)>k+1:
+                stateout[k+1] += 1
+            else:
+                stateout.append(1)
+                statein.append(0)
+        elif (n-6)%4==1:
+            k = (n+1)/4-1
+            k = int(k)
+            stateout[k] -= 1
+            statein[k] += 1
+        elif (n-6)%4==2:
+            k = (n)/4-1
+            k = int(k)
+            statein[0] -= 1
+            statein[k] -= 1
+            if len(statein)>k+1:
+                statein[k+1] += 1
+            else:
+                statein.append(1)
+                stateout.append(0)
+        elif (n-6)%4==3:
+            k = (n-1)/4-1
+            k = int(k)
+            statein[k]  -= 1
+            stateout[k] += 1
+        return stateout, statein
+    
+    t50s = []
+    lenmean = []
+    fibrestot = []
+    fibrestotout = []
+    fibrestotin = []
+    
+    for k in range(sims):
+        
+        stateout = [m]
+        statein  = [0]
+        
+        prop = props(stateout, statein, kn, k2, kplus, kin, kout, x, R)
+    
+        t=0
+        
+        state_history = [[stateout, statein]]
+        time_history = [0]
+        prop_history = [prop]
+        
+        tm=tmax
+        
+        totmout = m
+        totPout = 0
+        totMout = 0
+        totmin  = 0
+        totPin  = 0
+        totMin  = 0
+        
+        totM = totMout + totMin
+        
+        tot_history = [[totmout, totPout, totMout, totmin, totPin, totMin]]
+        
+        while t<tm:
+            
+            if t >= 0.8*tm:
+                if kn!=0 and totM < 0.95*m:
+                    tm *= 1.2
+            
+            p_cumsum = np.cumsum(prop)
+            p_sum = p_cumsum[-1]
+            if p_sum == 0:
+                break
+            p_cumsum /= p_sum
+                
+            rand = np.random.random()
+            r = np.searchsorted(p_cumsum, rand)
+            
+            stateout, statein = reaction(stateout, statein, r)
+            
+            t += 1.0 / p_sum * np.log(1.0 / rand)
+            totmout, totPout, totMout  = fibres(stateout)
+            totmin, totPin, totMin = fibres(statein)
+            totM = totMout + totMin
+            
+            state_history.append([stateout, statein])
+            time_history.append(t)
+            prop_history.append(prop)
+            tot_history.append([totmout, totPout, totMout, totmin, totPin, totMin])
+            
+            prop = props(stateout, statein, kn, k2, kplus, kin, kout, x, R)
+        
+        tot_history = np.array(tot_history)
+        
+        t50i = np.searchsorted(tot_history[:, 2]+tot_history[:, 5], 0.5*m, side='left')
+        t50s.append(time_history[t50i])
+        
+        print(time_history[t50i])
+        
+        while len(stateout[1:-1])<len(fibrestotout):
+            stateout = np.append(stateout, 0)
+            statein = np.append(statein, 0)
+        while len(stateout[1:-1])>len(fibrestotout):
+            fibrestotout = np.append(fibrestotout, 0)
+            fibrestotin = np.append(fibrestotin, 0)
+    
+        fibrestotout = np.add(fibrestotout, stateout[1:-1])
+        fibrestotin = np.add(fibrestotin, statein[1:-1])
+        fibrestot = np.add(fibrestotin, fibrestotout)
+        
+        lenmean.append((totMout+totMin)/(totPin+totPout))
+        
+        plt.plot(time_history, tot_history[:, 2], color='red')  
+        plt.plot(time_history, tot_history[:, 5], color='blue')
+        plt.plot(time_history, tot_history[:, 2]+tot_history[:, 5], color='green')
+        plt.show()
+        
+        plt.plot(range(2, len(fibrestot)+2), fibrestot, color='red')
+        plt.show()
+        
+        print('done %d out of %s' % (k+1, sims))
+    
+    
+    df = pd.DataFrame(data=fibrestot, columns=['fibrestot'])
+    df['fibresin'] = fibrestotin
+    df['fibresout'] = fibrestotout
+    
+    dt = pd.DataFrame(data=t50s, columns=['t50'])
+    
+    dp = pd.DataFrame.from_dict(params)
+    '''
+    df.to_excel(name+'_fib_'+str(now.strftime("%y%m%d_%H%M%S"))+'.xls')
+    dt.to_excel(name+'_t50_'+str(now.strftime("%y%m%d_%H%M%S"))+'.xls')
+    dp.to_excel(name+'_params_'+str(now.strftime("%y%m%d_%H%M%S"))+'.xls')
+    '''

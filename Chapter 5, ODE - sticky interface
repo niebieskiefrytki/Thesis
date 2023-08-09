@@ -1,0 +1,160 @@
+#solving ODEs for the basic interface-aggregation model with instant transport
+# aggregation reactions: primary nucleation (kn), elongation (kplus), secondary nucleation (k2)
+#same reactions happen within the interface: kh, kplusint and k2int respectively
+#amount of interface is determined by I0 and the binding constant is Kb
+
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+import matplotlib
+from scipy.integrate import odeint
+
+matplotlib.rc('pdf', fonttype=42)
+plt.rcParams.update({'font.size': 6})
+
+def Nucl(S, kn):
+    return kn*S**2
+    
+def Elon(S, P, kplus):
+    return 2*kplus*S*P
+
+def Nucl2(S, M, kn2):
+    return kn2*S**2*M
+    
+def Nuclh(Sfree, Ssurf, kh):
+    return kh*Sfree*Ssurf
+
+def Conv(A, kconv):
+    return A*kconv
+
+def Diss(A, kdiss):
+    return A*kdiss
+    
+def Sfree(S, Kb, I0, Pint):
+    if Kb==0:
+        return S
+    elif I0==0:
+        return S
+    else:
+        I0eff = I0-Pint
+        a = Kb
+        b = 1+Kb*I0eff-S*Kb
+        c = -S
+        delta = b**2-4*a*c
+        return (-b+math.sqrt(delta))/2/a
+
+def Ssurf(S, Kb, I0, Pint):
+    if Kb==0:
+        return 0
+    elif I0==0:
+        return 0
+    else:
+        I0eff = I0-Pint
+        a = Kb
+        b = 1+Kb*I0eff-S*Kb
+        c = -S
+        delta = b**2-4*a*c
+        Sfree = (-b+math.sqrt(delta))/2/a
+        return Kb*I0eff*Sfree/(1+Kb*Sfree)
+    
+def nonSfree(S, Kb, I0):
+    if Kb==0:
+        return S
+    elif I0==0:
+        return S
+    else:
+        I0eff = I0
+        a = Kb
+        b = 1+Kb*I0eff-S*Kb
+        c = -S
+        delta = b**2-4*a*c
+        return (-b+math.sqrt(delta))/2/a
+
+def nonSsurf(S, Kb, I0):
+    if Kb==0:
+        return 0
+    elif I0==0:
+        return 0
+    else:
+        I0eff = I0
+        a = Kb
+        b = 1+Kb*I0eff-S*Kb
+        c = -S
+        delta = b**2-4*a*c
+        Sfree = (-b+math.sqrt(delta))/2/a
+        return Kb*I0eff*Sfree/(1+Kb*Sfree)
+    
+def surfareac(mcoac, R, d):
+    return 3/R*mcoac/d
+
+#total initial concentration:
+mo=40
+
+#total amount of interface:
+I0 = mo/100
+#aggregation rate constants
+ #dilute phase:
+kn = 0.0002
+kplus = 1
+k2 = 0.001
+ #interface:
+kh = 10
+kplusint = 1
+k2int = 0.001
+#binding constant to the interface
+Kb = 0.001
+
+#ratio of volumes:
+ #used only to recalculate the concentrations - coacervate volume is excluded as aSyn is assumed not to partition
+R = 100
+
+species0 = [mo*(R+1)/R, 0, 0, 0, 0]
+nonspecies0 = [mo*(R+1)/R, 0, 0]
+
+#time range:
+time = np.linspace(0, 1.5, 1000)
+
+fig, ax = plt.subplots(figsize=(5.5, 4), dpi=400)
+
+def model(species, time):
+    '''!!!all concentrations are in the dilute phase!!!'''
+  # 0  1  2  3     4
+    S, P, M, Pint, Mint = species
+    
+    dydt = [
+            -2*Nucl(Sfree(S, Kb, I0, Pint), kn) -Elon(Sfree(S, Kb, I0, Pint), P, kplus) -2*Nucl2(Sfree(S, Kb, I0, Pint), M, k2)-2*Nucl2(Sfree(S, Kb, I0, Pint), Mint, k2int)-2*Nuclh(Sfree(S, Kb, I0, Pint), Ssurf(S, Kb, I0, Pint), kh) -Elon(Sfree(S, Kb, I0, Pint), Pint, kplusint/2),
+            Nucl(Sfree(S, Kb, I0, Pint), kn) +Nucl2(Sfree(S, Kb, I0, Pint), M, k2) +Nucl2(Sfree(S, Kb, I0, Pint),Mint, k2int),
+            2*Nucl(Sfree(S, Kb, I0, Pint), kn) +Elon(Sfree(S, Kb, I0, Pint), P, kplus) +2*Nucl2(Sfree(S, Kb, I0, Pint), M, k2)+2*Nucl2(Sfree(S, Kb, I0, Pint), Mint, k2int),
+            Nuclh(Sfree(S, Kb, I0, Pint), Ssurf(S, Kb, I0, Pint), kh),
+            2*Nuclh(Sfree(S, Kb, I0, Pint), Ssurf(S, Kb, I0, Pint), kh) +Elon(Sfree(S, Kb, I0, Pint), Pint, kplusint/2)
+    ]
+    
+    return dydt
+
+def nonmodel(species, time):
+    '''!!!all concentrations are in the dilute phase!!!'''
+  # 0  1  2  3     4
+    S, P, M = species
+    
+    dydt = [
+            -2*Nucl(nonSfree(S, Kb, I0), kn) -Elon(nonSfree(S, Kb, I0), P, kplus) -2*Nucl2(nonSfree(S, Kb, I0), M, k2)-2*Nuclh(nonSfree(S, Kb, I0),  nonSsurf(S, Kb, I0), kh),
+            Nucl(nonSfree(S, Kb, I0), kn) +Nucl2(nonSfree(S, Kb, I0), M, k2) +Nuclh(nonSfree(S, Kb, I0),  nonSsurf(S, Kb, I0), kh),                                                                      
+            2*Nucl(nonSfree(S, Kb, I0), kn) +Elon(nonSfree(S, Kb, I0), P, kplus) +2*Nucl2(nonSfree(S, Kb, I0), M, k2)+2*Nuclh(nonSfree(S, Kb, I0),  nonSsurf(S, Kb, I0), kh),
+    ]
+    
+    return dydt
+
+sol = odeint(model, species0, time)
+nonsol = odeint(nonmodel, nonspecies0, time)
+
+#ax.plot(time, sol[:,0]*R/(R+1), label='total aSyn monomer')
+ax.plot(time, (sol[:,2]+sol[:,4])*R/(R+1), label='[M] sticky model')
+ax.plot(time, nonsol[:,2]*R/(R+1), label='[M] non-sticky model')
+#check total aSyn:
+#ax.plot(time, sol[:,2]+sol[:,4]+sol[:,0])
+ax.set_ylabel('concentration')
+ax.set_xlabel('time')
+ax.set_xlim(-0.03, 1.5)
+ax.legend()
+
+fig.savefig('sticky-nonsticky.pdf')

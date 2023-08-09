@@ -1,0 +1,341 @@
+#solving ODEs for the basic interface-aggregation model with instant transport
+# aggregation reactions: primary nucleation (kn), elongation (kplus), secondary nucleation (k2)
+#same reactions happen within the interface: kh, kplusint and k2int respectively
+#amount of interface is determined by I0 and the binding constant is Kb
+
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+import matplotlib
+from scipy.integrate import odeint
+
+matplotlib.rc('pdf', fonttype=42)
+plt.rcParams.update({'font.size': 6})
+
+cl = ['#118AB2', '#EF476F', '#06D6A0', '#FFD166']
+cl2 = ['#2EA8D0', '#E37A93', '#32E0B2', '#F0D492']
+
+def Nucl(S, kn):
+    return kn*S**2
+    
+def Elon(S, P, kplus):
+    return 2*kplus*S*P
+
+def Nucl2(S, M, kn2):
+    return kn2*S**2*M
+    
+def Nuclh(Sfree, Ssurf, kh):
+    return kh*Sfree*Ssurf
+
+def Conv(A, kconv):
+    return A*kconv
+
+def Diss(A, kdiss):
+    return A*kdiss
+    
+def Sfree(S, Kb, I0):
+    if Kb==0:
+        return S
+    elif I0==0:
+        return S
+    else:
+        I0eff = I0
+        a = Kb
+        b = 1+Kb*I0eff-S*Kb
+        c = -S
+        delta = b**2-4*a*c
+        return (-b+math.sqrt(delta))/2/a
+
+def Ssurf(S, Kb, I0):
+    if Kb==0:
+        return 0
+    elif I0==0:
+        return 0
+    else:
+        I0eff = I0
+        a = Kb
+        b = 1+Kb*I0eff-S*Kb
+        c = -S
+        delta = b**2-4*a*c
+        Sfree = (-b+math.sqrt(delta))/2/a
+        return Kb*I0eff*Sfree/(1+Kb*Sfree)
+    
+def surfareac(mcoac, R, d):
+    return 3/R*mcoac/d
+
+#total initial concentration:
+mo=40
+
+
+simno = 5
+
+if simno ==1:
+    
+    mos = [mo]
+
+    #run1 - elongation dominated
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #interface nucleation
+    kh = 0
+     #total amount of interface:
+    I0s = [mo/100]
+     #binding constant to the interface
+    Kb = 1
+    #ratio of volumes:
+    R = 100
+    
+if simno ==2: #basic interface
+
+    mos = [mo]
+
+    #run1 - elongation dominated
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #interface nucleation
+    kh = 0.1
+     #total amount of interface:
+    I0s = [mo/100]
+     #binding constant to the interface
+    Kb = 1
+    #ratio of volumes:
+    R = 100
+
+if simno ==3: #no-saturation regime
+
+    mos = [mo, mo, mo, mo, mo, 0.5*mo, 0.25*mo, mo, 2*mo, 4*mo]
+
+    #run1 - elongation dominated
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #interface nucleation
+    kh = 1
+     #total amount of interface:
+    I0s = [0.25*mo, 0.5*mo, mo, 2*mo, 4*mo, mo, mo, mo, mo, mo]
+     #binding constant to the interface
+    Kb = 0.001
+    #ratio of volumes:
+    R = 100
+    
+if simno ==4: #saturation regime
+
+    mos = [mo, mo, mo, mo, mo, 0.25*mo, 0.5*mo, mo, 2*mo, 4*mo]
+
+    #run1 - elongation dominated
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #interface nucleation
+    kh = 10
+     #total amount of interface:
+    I0s = [0.25*mo/1000, 0.5*mo/1000, mo/1000, 2*mo/1000, 4*mo/1000, mo/1000, mo/1000, mo/1000, mo/1000, mo/1000]
+     #binding constant to the interface
+    Kb = 1
+    #ratio of volumes:
+    R = 100
+    
+if simno ==5: #no-saturation regime
+
+    mos = [mo, mo, mo, mo, mo, 0.25*mo, 0.5*mo, mo, 2*mo, 4*mo]
+    
+    mor = mo
+
+    #run1 - elongation dominated
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #interface nucleation
+    kh = 10
+     #total amount of interface:
+    I0s = [0.25*mo/200, 0.5*mo/200, mo/200, 2*mo/200, 4*mo/200, mo/200, mo/200, mo/200, mo/200, mo/200]
+    
+    I0r = mo/200
+    
+     #binding constant to the interface
+    Kb = 0.001
+    #ratio of volumes:
+    R = 100
+    
+if simno ==6: #saturation regime
+
+    mos = [mo, mo, mo, mo, mo, 0.25*mo, 0.5*mo, mo, 2*mo, 4*mo]
+    
+    mor = mo
+
+    #run1 - elongation dominated
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #interface nucleation
+    kh = 10
+     #total amount of interface:
+    I0s = [0.25*mo/200, 0.5*mo/200, mo/200, 2*mo/200, 4*mo/200, mo/200, mo/200, mo/200, mo/200, mo/200]
+    
+    I0r = mo/200
+    
+     #binding constant to the interface
+    Kb = 1
+    #ratio of volumes:
+    R = 100
+
+#time range:
+time = np.linspace(0, 5, 2500)
+
+def model(species, time):
+    '''!!!all concentrations are in the dilute phase!!!'''
+  # 0  1  2  3     4
+    S, P, M = species
+    
+    dydt = [
+            -2*Nucl(Sfree(S, Kb, I0), kn) -Elon(Sfree(S, Kb, I0), P, kplus) -2*Nucl2(Sfree(S, Kb, I0), M, k2)-2*Nuclh(Sfree(S, Kb, I0),  Ssurf(S, Kb, I0), kh),
+            Nucl(Sfree(S, Kb, I0), kn) +Nucl2(Sfree(S, Kb, I0), M, k2) +Nuclh(Sfree(S, Kb, I0),  Ssurf(S, Kb, I0), kh),                                                                      
+            2*Nucl(Sfree(S, Kb, I0), kn) +Elon(Sfree(S, Kb, I0), P, kplus) +2*Nucl2(Sfree(S, Kb, I0), M, k2)+2*Nuclh(Sfree(S, Kb, I0),  Ssurf(S, Kb, I0), kh),
+    ]
+    
+    return dydt
+
+def puremodel(species, time):
+    '''!!!S indicates total concentration in the system, Mout and Min are phase-specific concentrations!!!'''
+  # 0  1     2     3    4
+    S, P, M = species
+    
+    dydt = [
+            R/(R+1)*(Nucl(Sfree(S, Kb, I0), kn)),
+            R/(R+1)*(Elon(Sfree(S, Kb, I0), P, kplus)),
+            R/(R+1)*(Nucl2(Sfree(S, Kb, I0), M, k2)),
+            R/(R+1)*(Nuclh(Sfree(S, Kb, I0),  Ssurf(S, Kb, I0), kh))
+    ]
+    
+    return dydt
+
+fig, ax = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig2, ax2 = plt.subplots(figsize=(5.5, 4), dpi=400)
+
+fig3, ax3 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig4, ax4 = plt.subplots(figsize=(5.5, 4), dpi=400)
+
+species0 = [mor*(R+1)/R, 0, 0]
+I0 = I0r
+sol = odeint(model, species0, time)
+
+Mtot = sol[:,2]*R/(R+1)/mo
+t50r = np.argmax(Mtot>0.5)
+t50r = time[t50r]
+
+c_val = 0.28
+
+for n, mo in enumerate(mos):
+    
+    cmap = matplotlib.cm.get_cmap('Greens')
+    cmap2 = matplotlib.cm.get_cmap('Oranges')
+    color = cmap(c_val)
+    color2 = cmap2(c_val-4/6)
+    c_val += 1/6
+    
+    species0 = [mo*(R+1)/R, 0, 0]
+    
+    I0 = I0s[n]
+    
+    sol = odeint(model, species0, time)
+    
+    Mtot = sol[:,2]*R/(R+1)/mo
+    t50 = np.argmax(Mtot>0.5)
+    t50 = time[t50]
+    t50rel = t50/t50r
+    
+    if n<=4:
+    
+        #ax.plot(time, sol[:,0]*R/(R+1)/mo, label='relative total aSyn monomer')
+        ax.plot(time, (sol[:,2])*R/(R+1)/mo, label='[M] I0='+str(I0)+' m0='+str(mo), c = color)
+        
+        ax3.scatter(I0, t50rel, c = color)
+        
+        if n==0:
+            y1_1 = Mtot
+        if n==4:
+            y1_2 = Mtot
+    
+    else:
+        
+        #ax2.plot(time, sol[:,0]*R/(R+1)/mo, label='relative total aSyn monomer')
+        ax2.plot(time, (sol[:,2])*R/(R+1)/mo, label='[M] I0='+str(I0)+' m0='+str(mo), c = color2)
+        
+        ax4.scatter(mo, t50rel, c = color2)
+        
+        if n==5:
+            y2_1 = Mtot
+        if n==9:
+            y2_2 = Mtot
+    
+    #check total aSyn:
+    #ax.plot(time, sol[:,2]+sol[:,4]+sol[:,0])
+    ax.set_ylabel('relative amount of aggregate')
+    ax.set_xlabel('time')
+    ax.legend()
+    
+    ax2.set_ylabel('relative amount of aggregate')
+    ax2.set_xlabel('time')
+    ax2.legend()
+        
+    ax3.set_ylabel('t50/t50,ref')
+    ax3.set_xlabel('I0')
+    ax3.legend()
+        
+    ax4.set_ylabel('t50/t50,ref')
+    ax4.set_xlabel('[M]0')
+    ax4.legend()
+    
+    ax.set_xlim(-0.03, 1.5)
+    ax2.set_xlim(-0.03, 1.5)
+    
+    ax3.set_yscale('log')
+    ax4.set_yscale('log')
+    
+    ax3.set_ylim(10**(-0.45), 10**(0.45))
+    ax4.set_ylim(10**(-0.7), 10**(0.7))
+    
+    for n, t in enumerate(time):
+        rates = model(sol[n,:], t)
+        purerates = puremodel(sol[n,:], t)
+        if n==0:
+            r = np.array(rates)
+            purer = np.array(purerates)
+        else:
+            r = np.vstack([r, rates])
+            purer = np.vstack([purer, purerates])
+            
+ax.fill_between(time, y1_1, y1_2, alpha=0.8, color=cmap(0.1))
+ax2.fill_between(time, y2_1, y2_2, alpha=0.8, color=cmap2(0.1))
+
+ax3.set_yticks([0.25, 0.5, 1, 2, 4])
+ax4.set_yticks([0.25, 0.5, 1, 2, 4])
+
+'''
+fig.savefig('nosat-I0scan.pdf')
+fig2.savefig('nosat-moscan.pdf')
+fig3.savefig('nosat-I0scan-times.pdf')
+fig4.savefig('nosat-moscan-times.pdf')
+
+
+fig.savefig('sat-I0scan.pdf')
+fig2.savefig('sat-moscan.pdf')
+fig3.savefig('sat-I0scan-times.pdf')
+fig4.savefig('sat-moscan-times.pdf')
+'''
+
+plt.show()

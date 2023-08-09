@@ -1,0 +1,265 @@
+#solving ODEs for the basic partitioning-aggregation model with instant transport
+# aggregation reactions: primary nucleation (kn), elongation (kplus), secondary nucleation (k2)
+#same reactions happen in the condensed phase - rate constants with _in suffix
+
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+from matplotlib import rcParams, rcParamsDefault
+import matplotlib
+from scipy.integrate import odeint
+
+rcParams.update(rcParamsDefault)
+rcParams['font.family'] = "sans-serif"
+rcParams['font.sans-serif'] = "Computer Modern Sans Serif"
+rcParams.update({'font.size': 12})
+
+matplotlib.rc('pdf', fonttype=42)
+
+cl = ['#118AB2', '#EF476F', '#06D6A0', '#FFD166']
+cl2 = ['#2EA8D0', '#E37A93', '#32E0B2', '#F0D492']
+
+def Nucl(S, kn):
+    if kn==0:
+        return 0
+    else:
+        return kn*S**2
+def Elon(S, P, kplus):
+    if kplus==0:
+        return 0
+    else:
+        return 2*kplus*S*P
+def Nucl2(S, M, kn2):
+    if kn2==0:
+        return 0
+    else:
+        return kn2*S**2*M
+    
+def Sout(S, Kp, R):
+    return (R+1)/(Kp+R)*S
+        
+def Sin(S, Kp, R):
+    return Kp*(R+1)/(Kp+R)*S
+
+def Ssurf(S, I, Kp, Kb, R):
+    if Kb!=0:
+        a = 1/R*Kb*Kp+Kb
+        b = 1+1/R*Kp+Kb*I
+        c = -S*R/(1+R)
+        delta = b**2-4*a*c
+        Sout = (-b+math.sqrt(delta))/2/a
+        return (Kb*Sout*I)/(1+Kb*Sout)
+    else:
+        return 0
+    
+def surfareac(mcoac, R, d):
+    return 3/R*mcoac/d
+
+
+
+simno = 2
+
+if simno ==1:
+
+    #run1 - elongation dominated
+    #total initial concentration:
+    mo = 40
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #condensed phase:
+    kn_in = kn
+    kplus_in = kplus
+    k2_in = k2
+    #partition coefficient:
+    Kp = 1
+    #ratio of volumes:
+    R = 100
+
+elif simno ==2:
+    
+    #run1 - elongation dominated
+    #total initial concentration:
+    mo = 40
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #condensed phase:
+    kn_in = kn
+    kplus_in = kplus
+    k2_in = k2
+    #partition coefficient:
+    Kp = 3
+    #ratio of volumes:
+    R = 100
+
+elif simno ==3:
+    
+    #run1 - elongation dominated
+    #total initial concentration:
+    mo = 40    
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #condensed phase:
+    kn_in = kn
+    kplus_in = kplus
+    k2_in = k2
+    #partition coefficient:
+    Kp = 9
+    #ratio of volumes:
+    R = 100
+    
+
+elif simno ==4:
+    
+    #run1 - elongation dominated
+    #total initial concentration:
+    mo = 120    
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #condensed phase:
+    kn_in = kn
+    kplus_in = kplus
+    k2_in = k2
+    #partition coefficient:
+    Kp = 0
+    #ratio of volumes:
+    R = 100
+    
+elif simno ==5:
+    
+    #run1 - elongation dominated
+    #total initial concentration:
+    mo = 9*40 
+    #aggregation rate constants
+     #dilute phase:
+    kn = 0.00001
+    kplus = 1
+    k2 = 0.0001
+     #condensed phase:
+    kn_in = kn
+    kplus_in = kplus
+    k2_in = k2
+    #partition coefficient:
+    Kp = 0
+    #ratio of volumes:
+    R = 100
+
+species0 = [mo, 0, 0, 0, 0]
+
+#time range:
+time = np.linspace(0, 3, 500)
+
+fig, ax = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig2, ax2 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig3, ax3 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig4, ax4 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig5, ax5 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig6, ax6 = plt.subplots(figsize=(5.5, 4), dpi=400)
+
+def model(species, time):
+    '''!!!S indicates total concentration in the system, Mout and Min are phase-specific concentrations!!!'''
+  # 0  1     2     3    4
+    S, Pout, Mout, Pin, Min = species
+    
+    dydt = [
+            R/(R+1)*(-2*Nucl(Sout(S, Kp, R), kn) -Elon(Sout(S, Kp, R), Pout, kplus) -2*Nucl2(Sout(S, Kp, R), Mout, k2))+1/(R+1)*(-2*Nucl(Sin(S, Kp, R), kn_in) -Elon(Sin(S, Kp, R), Pin, kplus_in) -2*Nucl2(Sin(S, Kp, R), Min, k2_in)),
+            Nucl(Sout(S, Kp, R), kn) +Nucl2(Sout(S, Kp, R), Mout, k2),
+            +2*Nucl(Sout(S, Kp, R), kn) +Elon(Sout(S, Kp, R), Pout, kplus) +2*Nucl2(Sout(S, Kp, R), Mout, k2),
+            Nucl(Sin(S, Kp, R), kn_in) +Nucl2(Sin(S, Kp, R), Min, k2_in),
+            +2*Nucl(Sin(S, Kp, R), kn_in) +Elon(Sin(S, Kp, R), Pin, kplus_in) +2*Nucl2(Sin(S, Kp, R), Min, k2_in)
+    ]
+    
+    return dydt
+
+def puremodel(species, time):
+    '''!!!S indicates total concentration in the system, Mout and Min are phase-specific concentrations!!!'''
+  # 0  1     2     3    4
+    S, Pout, Mout, Pin, Min = species
+    
+    dydt = [
+            R/(R+1)*(Nucl(Sout(S, Kp, R), kn))+1/(R+1)*(Nucl(Sin(S, Kp, R), kn_in)),
+            R/(R+1)*(Elon(Sout(S, Kp, R), Pout, kplus))+1/(R+1)*(Elon(Sin(S, Kp, R), Pin, kplus_in)),
+            R/(R+1)*(Nucl2(Sout(S, Kp, R), Mout, k2))+1/(R+1)*(Nucl2(Sin(S, Kp, R), Min, k2_in))
+    ]
+    
+    return dydt
+
+
+sol = odeint(model, species0, time)
+mult = Kp
+Kp = 0
+mo = mult*mo
+species0 = [mo, 0, 0, 0, 0]
+solnoP = odeint(model, species0, time)
+
+ax.plot(time, sol[:,0], label='total aSyn monomer', c=cl[0])
+ax.plot(time, R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4], label='total aggregate', c=cl[1])
+#check total aSyn:
+#ax.plot(time, R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4]+sol[:,0])
+ax.set_ylabel('concentration')
+ax.set_xlabel('time')
+ax.legend()
+fig.savefig('amounts'+str(simno)+'.pdf')
+
+ax6.plot(time, sol[:,0], label='total aSyn monomer', c=cl[0])
+ax6.plot(time, R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4], label='total aggregate', c=cl[1])
+ax6.plot(time, solnoP[:,0]/mult, label='total aSyn monomer - mult', c=cl[0], ls='--')
+ax6.plot(time, (R/(R+1)*solnoP[:,2]+1/(R+1)*solnoP[:,4])/mult, label='total aggregate - mult', c=cl[1], ls='--')
+#check total aSyn:
+#ax.plot(time, R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4]+sol[:,0])
+ax6.set_ylabel('concentration')
+ax6.set_xlabel('time')
+ax6.legend()
+fig6.savefig('amounts-comp'+str(simno)+'.pdf')
+
+for n, t in enumerate(time):
+    rates = model(sol[n,:], t)
+    purerates = puremodel(sol[n,:], t)
+    if n==0:
+        r = np.array(rates)
+        purer = np.array(purerates)
+    else:
+        r = np.vstack([r, rates])
+        purer = np.vstack([purer, purerates])
+        
+ax2.plot(time, purer[:,0], label='primary nuc.', c=cl[0])
+ax2.plot(time, purer[:,1], label='elongation.', c=cl[1])
+ax2.plot(time, purer[:,2], label='secondary nuc.', c=cl[2])
+#check total aSyn:
+#ax.plot(time, R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4]+sol[:,0])
+ax2.set_ylabel('reaction rate')
+ax2.set_xlabel('time')
+ax2.legend()
+fig2.savefig('rates'+str(simno)+'.pdf')
+
+ax3.plot(time, (R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4])/(R/(R+1)*sol[:,1]+1/(R+1)*sol[:,3]), label='total aggregate', c=cl[1])
+ax3.set_ylabel('mean fibril length')
+ax3.set_xlabel('time')
+fig3.savefig('length'+str(simno)+'.pdf')
+
+ax4.plot(time, (R/(R+1)*sol[:,1]+1/(R+1)*sol[:,3]), label='total aggregate', c=cl[1])
+ax4.set_ylabel('concentration of fibrils')
+ax4.set_xlabel('time')
+fig4.savefig('number'+str(simno)+'.pdf')
+
+Kp = mult
+
+ax5.plot(time, (1/(R+1)*(sol[:,4]+Sin(sol[:,0], Kp, R)))/(R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4]+sol[:,0]), c=cl[1], label='fract. protein inside')
+#ax5.plot(time, (1/(R+1)*sol[:,4])/(R/(R+1)*sol[:,2]+1/(R+1)*sol[:,4]), c=cl[1], label='fract. of aggregate inside')
+ax5.set_ylabel('fract. of protein inside')
+ax5.set_xlabel('time')
+ax5.set_ylim(-0.03, 1.03)
+fig5.savefig('partit'+str(simno)+'.pdf')
+
+plt.show()

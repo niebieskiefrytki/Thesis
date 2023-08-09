@@ -1,0 +1,273 @@
+#importing necesarry Python packets for function to work
+# including numpy mathplotlib and odient from scipy 
+import numpy as np
+from numpy import diff
+import matplotlib.pyplot as plt
+from scipy.integrate import odeint
+from scipy.optimize import fsolve
+from scipy.integrate import solve_ivp
+
+#starting conditions of the system
+time = 50
+#starting total concentrations
+cFF = 3
+cF = 0
+cVV = 0
+cV = 10
+cFV = 0
+
+#definition of the volumes of the system
+Vt = 1
+vc=0
+vd=Vt-vc
+
+
+#rates of the System
+#dimerisation rates
+kdFF = 0.00   #F+F->FF
+kdVV = 0.00   #V+V->VV
+kdFV = 0.00   #F+V->FV
+
+#reduction rates
+krFF = 0.0000   #FF->F+F
+krVV = 0.0000   #VV->V+V
+krFV = 0.0000   #FV->F+V
+
+#exchange rates
+keFVV = 0.005   #F+VV->V+FV
+keVFV = 0.005   #F+VV<-V+FV (reverse 1st)
+keVFF = 0.005   #V+FF->F+FV
+keFFV = 0.005   #V+FF<-F+FV (reverse 3rd)
+
+#partition coefficient
+KpF = 5
+KpV = 0.1
+KpVV = 0.1
+KpFV = 5
+
+#defining CCC
+CCC = 1
+
+#molar volume of dimer: same for all dimers, volume of monomer = 1/2*MV, volume includes water associated with dimer molecule in the coacervate phase (same for every dimer, 1/2 for monomer)
+MV = 0.01
+
+#determining initial amounts (total)
+nFF = Vt*cFF
+nF = Vt*cF
+nVV = Vt*cVV
+nV = Vt*cV
+nFV = Vt*cFV
+
+speciesstart = [nFF, nF, nVV, nV, nFV]
+
+#function for detemining amount in the coac. phase
+def dense(nt, VT, CCC, MV):
+    if nt/VT>CCC:
+        nc = (nt - VT*CCC)/(1-MV*CCC)
+    else:
+        nc = 0
+    return nc
+
+#function for dividing by zero
+def byzero(a, b):
+    if b==0:
+        return 0
+    else:
+        return a/b
+
+#transport is assumed to be infinitely fast, for multi-component system the set of equations is solved numerically
+def partitioning(x, Vt, ncFF, MV, KpF, KpV, KpFV, KpVV, nF, nV, nVV, nFV):
+    
+    [ncF, ncV, ncVV, ncFV] = x
+    
+    #total coacervate volume
+    vcFF = ncFF*MV
+    vcF = ncF*MV/2
+    vcV = ncV*MV/2
+    vcVV = ncVV*MV
+    vcFV = ncFV*MV
+    Vc = vcFF+vcF+vcV+vcVV+vcFV
+    
+    #set of equations
+    eF = ncF/Vc -KpF*(nF-ncF)/(Vt-Vc)
+    eV = ncV/Vc -KpV*(nV-ncV)/(Vt-Vc)
+    eVV = ncVV/Vc -KpVV*(nVV-ncVV)/(Vt-Vc)
+    eFV = ncFV/Vc -KpFV*(nFV-ncFV)/(Vt-Vc)
+
+    eq = [eF, eV, eVV, eFV]
+    return eq
+
+#speciesstart = [nFF, nF, nVV, nV, nFV]
+#Definition of the differential equation
+def twophasesystem(y, t, kdFF, kdVV, kdFV, krFF, krVV, krFV, keFVV, keVFV, keVFF, keFFV, Vt, CCC, MV,vc):
+    [nFF, nF, nVV, nV, nFV]=y
+    #determining amounts in the coacervate phase
+    ncFF = dense(nFF, Vt, CCC, MV)
+    #initial guess - assumes coacervate volume is 1% of total volume
+    if ncFF>0:
+        ncF0 = vc*(nF/Vt*KpF)
+        ncV0 = vc*(nV/Vt*KpV)
+        ncVV0 = vc*(nVV/Vt*KpVV)
+        ncFV0 = vc*(nFV/Vt*KpFV)
+        [ncF, ncV, ncVV, ncFV] = fsolve(partitioning, [ncF0, ncV0, ncVV0, ncFV0], args=(Vt, ncFF, MV, KpF, KpV, KpFV, KpVV, nF, nV, nVV, nFV))
+    else:
+        ncF=0
+        ncV=0
+        ncVV=0
+        ncFV=0
+    #determining amounts in the diluted phase
+    ndFF = nFF - ncFF
+    ndF = nF - ncF
+    ndV = nV - ncV
+    ndVV = nVV - ncVV
+    ndFV = nFV - ncFV
+    #determining volumes of the phases
+    vc = (ncFF+ncFV+ncVV+1/2*(ncF+ncV)) * MV
+    vd = Vt - vc
+    #determining concentrations in the coacervate phase
+    ccFF = byzero(ncFF, vc)
+    ccF = byzero(ncF, vc)
+    ccV = byzero(ncV, vc)
+    ccFV = byzero(ncFV, vc)
+    ccVV = byzero(ncVV, vc)
+    #determining concentrations in the diluted phase
+    cdFF = byzero(ndFF, vd)
+    cdF = byzero(ndF, vd)
+    cdV = byzero(ndV, vd)
+    cdFV = byzero(ndFV, vd)
+    cdVV = byzero(ndVV, vd)
+    #differential equations for total amounts
+    #diluted                                                                                    FVV                  VFV                  VFF                  FFV
+    #             dimerisation      dimerisation      reduction            reduction            exchange
+    dndFF = vd*(  +kdFF*cdF**2                        -krFF*cdFF                                +0                   +0                   -2*keVFF*cdV*cdFF    +keFFV*cdF*cdFV)
+    dndF =  vd*(  -2*kdFF*cdF**2    -kdFV*cdF*cdV     +2*krFF*cdFF         +krFV*cdFV           -2*keFVV*cdF*cdVV    +keVFV*cdV*cdFV      +2*keVFF*cdV*cdFF    -keFFV*cdF*cdFV)
+    dndVV = vd*(  +kdVV*cdV**2                        -krVV*cdVV                                -2*keFVV*cdF*cdVV    +keVFV*cdV*cdFV      +0                   +0)
+    dndV =   vd*(  -2*kdVV*cdV**2    -kdFV*cdF*cdV     +2*krVV*cdVV         +krFV*cdFV           +2*keFVV*cdF*cdVV    -keVFV*cdV*cdFV      -2*keVFF*cdV*cdFF    +keFFV*cdF*cdFV)
+    dndFV =  vd*(  +0                +kdFV*cdF*cdV     +0                   -krFV*cdFV           +2*keFVV*cdF*cdVV    -keVFV*cdV*cdFV      +2*keVFF*cdV*cdFF     -keFFV*cdF*cdFV)
+    
+    #coacervate
+    #             dimerisation      dimerisation      reduction            reduction            exchange
+    dncFF = vc*(  +kdFF*ccF**2                        -krFF*ccFF                                +0                   +0                   -2*keVFF*ccV*ccFF    +keFFV*ccF*ccFV)
+    dncF =  vc*(  -2*kdFF*ccF**2    -kdFV*ccF*ccV     +2*krFF*ccFF         +krFV*ccFV           -2*keFVV*ccF*ccVV    +keVFV*ccV*ccFV      +2*keVFF*ccV*ccFF    -keFFV*ccF*ccFV)
+    dncVV = vc*(  +kdVV*ccV**2                        -krVV*ccVV                                -2*keFVV*ccF*ccVV    +keVFV*ccV*ccFV      +0                   +0)
+    dncV =   vc*(  -2*kdVV*ccV**2    -kdFV*ccF*ccV     +2*krVV*ccVV         +krFV*ccFV           +2*keFVV*ccF*ccVV    -keVFV*ccV*ccFV      -2*keVFF*ccV*ccFF    +keFFV*ccF*ccFV)
+    dncFV =  vc*(  +0                +kdFV*ccF*ccV     +0                   -krFV*ccFV           +2*keFVV*ccF*ccVV    -keVFV*ccV*ccFV      +2*keVFF*ccV*ccFF     -keFFV*ccF*ccFV)
+    
+    #total    
+    dnFF = dndFF + dncFF
+    dnF  = dndF  + dncF
+    dnVV = dndVV + dncVV
+    dnV  = dndV  + dncV
+    dnFV = dndFV + dncFV
+    
+    dydt=[dnFF, dnF, dnVV, dnV, dnFV]
+    return dydt
+
+#timespan for the system
+timespan = np.linspace(0, time, 100000)
+# using odient to solve the system of differential equations
+aSpecies = odeint(twophasesystem, speciesstart, timespan, args=(kdFF, kdVV, kdFV, krFF, krVV, krFV, keFVV, keVFV, keVFF, keFFV, Vt, CCC, MV,vc))
+
+nFF = aSpecies[:, 0]
+nF = aSpecies[:, 1]
+nVV = aSpecies[:, 2]
+nV = aSpecies[:, 3]
+nFV =  aSpecies[:, 4]
+ccFF = []
+ccF = []
+ccV = []
+ccFV = []
+ccVV = []
+cdFF = []
+cdF = []
+cdV = []
+cdFV = []
+cdVV = []
+Lvd=[]
+Lvc=[]
+
+
+i=0
+vc=0
+for index in timespan:
+    ncFF = dense(nFF[i], Vt, CCC, MV)
+    if ncFF>0:
+        ncF0 = vc*(nF[i]/Vt*KpF)
+        ncV0 = vc*(nV[i]/Vt*KpV)
+        ncVV0 = vc*(nVV[i]/Vt*KpVV)
+        ncFV0 = vc*(nFV[i]/Vt*KpFV)
+        [ncF, ncV, ncVV, ncFV] = fsolve(partitioning, [ncF0, ncV0, ncVV0, ncFV0], args=(Vt, ncFF, MV, KpF, KpV, KpFV, KpVV, nF[i], nV[i],nVV[i], nFV[i]))
+    else:
+        ncF=0
+        ncV=0
+        ncVV=0
+        ncFV=0
+    ndFF = nFF[i] - ncFF
+    ndF = nF[i] - ncF
+    ndV = nV[i] - ncV
+    ndVV = nVV[i] - ncVV
+    ndFV = nFV[i] - ncFV
+    vc = (ncFF+ncFV+ncVV+1/2*(ncF+ncV)) * MV
+    vd = Vt - vc
+    ccFF.append(byzero(ncFF, vc))
+    ccF.append(byzero(ncF, vc))
+    ccV.append(byzero(ncV, vc))
+    ccFV.append(byzero(ncFV, vc))
+    ccVV.append(byzero(ncVV, vc))
+   
+    cdFF.append(byzero(ndFF, vd))
+    cdF.append(byzero(ndF, vd))
+    cdV.append(byzero(ndV, vd))
+    cdFV.append(byzero(ndFV, vd))
+    cdVV.append(byzero(ndVV, vd))
+    Lvc.append(vc)
+    Lvd.append(vd)
+    i=i+1
+Vtot=2*nVV+nV+nFV
+Ftot=2*nFF+nF+nFV
+fig, ax = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig2, ax2 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig3, ax3 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig4, ax4 = plt.subplots(figsize=(5.5, 4), dpi=400)
+fig5, ax5 = plt.subplots(figsize=(5.5, 4), dpi=400)
+
+ax.plot(timespan,Lvc,'black',label='Vcoacervate')
+#ax.plot(timespan,Lvd,'olive',label='Vdilute')
+ax.set_ylabel('amount')
+ax.set_xlabel('time')
+ax.set_ylim(-0.001,0.021)
+ax.set_yticks((0, 0.005, 0.01, 0.015, 0.02))
+ax.set_xlim(-2,52)
+#ax.set_yticks((0, 2.5, 5, 7.5, 10))
+fig.savefig('diss-vol2.pdf')
+
+ax2.plot(timespan,ccFF,'black',label='FF in dense phase')
+ax2.plot(timespan,ccF,'olive',label='F in dense phase')
+ax2.plot(timespan,ccVV,'green',label='VV in dense phase')
+ax2.plot(timespan,ccV,'blue',label='V in dense phase')
+ax2.plot(timespan,ccFV,'red',label='FV in dense phase')
+ax2.legend()
+
+ax3.plot(timespan,cdFF,'black',label='FF in dilute phase')
+ax3.plot(timespan,cdF,'olive',label='F in dilute phase')
+ax3.plot(timespan,cdVV,'green',label='VV in dilute phase')
+ax3.plot(timespan,cdV,'blue',label='V in dilute phase')
+ax3.plot(timespan,cdFV,'red',label='FV in dilute phase')
+ax3.legend()
+
+ax4.plot(timespan,Vtot,'blue')
+ax4.plot(timespan,Ftot,'red')
+
+ax5.plot(timespan, nF, color='red')
+ax5.plot(timespan, nFF, color='blue')
+ax5.plot(timespan, nFV, color='green')
+ax5.plot(timespan, nV, color='orange')
+ax5.plot(timespan, nVV, color='purple')
+ax5.set_ylabel('amount')
+ax5.set_xlabel('time')
+ax5.set_ylim(-0.5,10.5)
+ax5.set_xlim(-2,52)
+ax5.set_yticks((0, 2.5, 5, 7.5, 10))
+
+fig5.savefig('diss-amounts2.pdf')
+plt.show()
